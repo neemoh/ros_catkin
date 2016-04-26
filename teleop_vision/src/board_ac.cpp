@@ -25,27 +25,72 @@
 using namespace std;
 using namespace cv;
 
-namespace {
-const char* about = "Pose estimation using a ArUco Planar Grid board";
-const char* keys  =
-        "{w        |       | Number of squares in X direction }"
-        "{h        |       | Number of squares in Y direction }"
-        "{l        |       | Marker side lenght (in pixels) }"
-        "{s        |       | Separation between two consecutive markers in the grid (in pixels)}"
-        "{d        |       | dictionary: DICT_4X4_50=0, DICT_4X4_100=1, DICT_4X4_250=2,"
-        "DICT_4X4_1000=3, DICT_5X5_50=4, DICT_5X5_100=5, DICT_5X5_250=6, DICT_5X5_1000=7, "
-        "DICT_6X6_50=8, DICT_6X6_100=9, DICT_6X6_250=10, DICT_6X6_1000=11, DICT_7X7_50=12,"
-        "DICT_7X7_100=13, DICT_7X7_250=14, DICT_7X7_1000=15, DICT_ARUCO_ORIGINAL = 16}"
-        "{c        |       | Output file with calibrated camera parameters }"
-        "{v        |       | Input from video file, if ommited, input comes from camera }"
-        "{ci       | 0     | Camera id if input doesnt come from video (-v) }"
-        "{dp       |       | File of marker detector parameters }"
-        "{rs       |       | Apply refind strategy }"
-        ;
-}
-
 /**
  */
+
+class boardDetector{
+public:
+	boardDetector(Mat& _camMatrix, Mat& _distCoeffs){
+		markersX = 9;
+		markersY = 6;
+		markerLength = 100;
+		markerSeparation = 20;
+		dictionaryId = 9;
+        axisLength = 200;
+		refindStrategy = false;
+
+		camMatrix = _camMatrix;
+		distCoeffs = _distCoeffs;
+		markersOfBoardDetected = 0;
+		detectorParams = aruco::DetectorParameters::create();
+		detectorParams->doCornerRefinement = true; // do corner refinement in markers
+		dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
+		gridboard =	aruco::GridBoard::create(markersX, markersY, markerLength, markerSeparation, dictionary);
+		board = gridboard.staticCast<aruco::Board>();
+	}
+	void detect(Vec3d& _rvec, Vec3d& _tvec){
+		// detect markers
+		aruco::detectMarkers(image, dictionary, corners, ids, detectorParams, rejected);
+
+		// refind strategy to detect more markers
+		if(refindStrategy)
+			aruco::refineDetectedMarkers(image, board, corners, ids, rejected, camMatrix,distCoeffs);
+
+		// estimate board pose
+		if(ids.size() > 0){
+			markersOfBoardDetected =
+					aruco::estimatePoseBoard(corners, ids, board, camMatrix, distCoeffs, rvec, tvec);
+			_rvec = rvec;
+			_tvec = tvec;
+		}
+	}
+	void drawAxis(){
+		if(markersOfBoardDetected > 0)
+			aruco::drawAxis(image, camMatrix, distCoeffs, rvec, tvec, axisLength);
+	}
+	void drawDetectedMarkers(){
+		if(ids.size() > 0)
+			aruco::drawDetectedMarkers(image, corners, ids);
+	}
+public:
+	int markersX;
+	int markersY;
+	float markerLength;
+	float markerSeparation;
+	int dictionaryId;
+	float axisLength;
+	bool refindStrategy;
+	int markersOfBoardDetected;
+	Mat image;
+	Mat camMatrix, distCoeffs;
+    vector<int> ids;
+    vector<vector< Point2f > > corners, rejected;
+    Vec3d rvec, tvec;
+	Ptr<aruco::DetectorParameters> detectorParams;
+	Ptr<aruco::Dictionary> dictionary;
+	Ptr<aruco::GridBoard> gridboard;
+	Ptr<aruco::Board> board;
+};
 static bool readCameraParameters(string filename, Mat &camMatrix, Mat &distCoeffs) {
     FileStorage fs(filename, FileStorage::READ);
     if(!fs.isOpened())
@@ -89,7 +134,6 @@ void drawAC(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distC
     line(_image, imagePoints[7], imagePoints[4], Scalar(200, 100, 10), 2);
 }
 
-
 ros::Duration d(0.01);
 
 class Listener
@@ -118,7 +162,6 @@ void chatter4(const std_msgs::String::ConstPtr& msg)
   d.sleep();
 }
 
-
 /**
  */
 int main(int argc, char *argv[]) {
@@ -130,86 +173,42 @@ int main(int argc, char *argv[]) {
 //        parser.printMessage();
 //        return 0;
 //    }
-	string c = "/home/nearlab/workspace/cameracalib/Debug/out_camera_data.xml";
-    int markersX = 9;
-    int markersY = 6;
-    float markerLength = 100;
-    float markerSeparation = 20;
-    int dictionaryId = 9;
+	//-------------------------------    Get image from camera -----------------------------
     int camId = 0;
-    bool refindStrategy = false;
-
     Mat camMatrix, distCoeffs;
+	string c = "/home/nearlab/workspace/cameracalib/Debug/out_camera_data.xml";
+    int waitTime= 40;
 
-        bool readOk = readCameraParameters(c, camMatrix, distCoeffs);
-        if(!readOk) {
-            cerr << "Invalid camera file" << endl;
-            return 0;
-        }
-
-
-    Ptr<aruco::DetectorParameters> detectorParams = aruco::DetectorParameters::create();
-    detectorParams->doCornerRefinement = true; // do corner refinement in markers
-
-    Ptr<aruco::Dictionary> dictionary =
-        aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
-
+    bool readOk = readCameraParameters(c, camMatrix, distCoeffs);
+    if(!readOk) {
+    	cerr << "Invalid camera file" << endl;
+    	return 0;
+    }
     VideoCapture inputVideo;
-    int waitTime;
-
-        inputVideo.open(camId);
-        waitTime = 40;
-
-
-    float axisLength = 0.5f * ((float)min(markersX, markersY) * (markerLength + markerSeparation) +
-                               markerSeparation);
-
-    // create board object
-    Ptr<aruco::GridBoard> gridboard =
-        aruco::GridBoard::create(markersX, markersY, markerLength, markerSeparation, dictionary);
-    Ptr<aruco::Board> board = gridboard.staticCast<aruco::Board>();
+    inputVideo.open(camId);
 
     double totalTime = 0;
     int totalIterations = 0;
 
+    boardDetector b(camMatrix, distCoeffs);
+
     while(inputVideo.isOpened()) {
         double tick = (double)getTickCount();
 
-        Mat image, imageCopy;
-        inputVideo >> image;
-
-        vector< int > ids;
-        vector< vector< Point2f > > corners, rejected;
+        Mat imageCopy;
         Vec3d rvec, tvec;
 
-        // detect markers
-        aruco::detectMarkers(image, dictionary, corners, ids, detectorParams, rejected);
-
-        // refind strategy to detect more markers
-        if(refindStrategy)
-            aruco::refineDetectedMarkers(image, board, corners, ids, rejected, camMatrix,
-                                         distCoeffs);
-
-        // estimate board pose
-        int markersOfBoardDetected = 0;
-        if(ids.size() > 0)
-            markersOfBoardDetected =
-                aruco::estimatePoseBoard(corners, ids, board, camMatrix, distCoeffs, rvec, tvec);
-
+        inputVideo >> b.image;
+		b.detect(rvec, tvec);
+		b.drawAxis();
+		b.drawDetectedMarkers();
         // draw results
-        image.copyTo(imageCopy);
-//        if(ids.size() > 0) {
-//            aruco::drawDetectedMarkers(imageCopy, corners, ids);
-//        }
+        b.image.copyTo(imageCopy);
 
-//        if(showRejected && rejected.size() > 0)
-//            aruco::drawDetectedMarkers(imageCopy, rejected, noArray(), Scalar(100, 0, 255));
-
-        if(markersOfBoardDetected > 0){
-        	aruco::drawAxis(imageCopy, camMatrix, distCoeffs, rvec, tvec, axisLength);
-
+        if(b.markersOfBoardDetected > 0){
         	drawAC(imageCopy, camMatrix, distCoeffs, rvec, tvec);
         }
+
         imshow("out", imageCopy);
         char key = (char)waitKey(waitTime);
         if(key == 27) break;
