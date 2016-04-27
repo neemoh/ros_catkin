@@ -130,6 +130,7 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(teleop_vision_node src/board_ac.cpp)
+add_executable(calib_robot src/calib_robot_board.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -145,7 +146,16 @@ add_executable(teleop_vision_node src/board_ac.cpp)
    						opencv_core
 						${catkin_LIBRARIES}
 )
-
+ target_link_libraries(calib_robot
+						opencv_aruco		
+						opencv_calib3d
+						opencv_highgui
+						opencv_videoio
+						opencv_imgcodecs
+						opencv_imgproc
+   						opencv_core
+						${catkin_LIBRARIES}
+)
 #############
 ## Install ##
 #############

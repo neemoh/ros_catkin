@@ -20,7 +20,7 @@
 #include <vector>
 #include <iostream>
 #include "ros/ros.h"
-#include "std_msgs/String.h"
+#include "geometry_msgs/Pose.h"
 #include <boost/thread.hpp>
 using namespace std;
 using namespace cv;
@@ -139,40 +139,28 @@ ros::Duration d(0.01);
 class Listener
 {
 public:
-  void chatter1(const std_msgs::String::ConstPtr& msg)
-  {
-    ROS_INFO_STREAM("chatter1: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
-    d.sleep();
-  }
-  void chatter2(const std_msgs::String::ConstPtr& msg)
-  {
-    ROS_INFO_STREAM("chatter2: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
-    d.sleep();
-  }
-  void chatter3(const std_msgs::String::ConstPtr& msg)
-  {
-    ROS_INFO_STREAM("chatter3: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
-    d.sleep();
-  }
+	void robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
+	{
+		//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
+		robotPose.position = msg->position;
+		robotPose.orientation = msg->orientation;
+		d.sleep();
+	}
+	//  void chatter2(const std_msgs::String::ConstPtr& msg)
+	//  {
+	//    ROS_INFO_STREAM("chatter2: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
+	//    d.sleep();
+	//  }
+public:
+	geometry_msgs::Pose robotPose;
 };
 
-void chatter4(const std_msgs::String::ConstPtr& msg)
-{
-  ROS_INFO_STREAM("chatter4: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
-  d.sleep();
-}
+
 
 /**
  */
 int main(int argc, char *argv[]) {
-//    CommandLineParser parser(argc, argv, keys);
-//    parser.about(about);
-//
-//    cout << "Hi" << endl;
-//    if(argc < 7) {
-//        parser.printMessage();
-//        return 0;
-//    }
+
 	//-------------------------------    Get image from camera -----------------------------
     int camId = 0;
     Mat camMatrix, distCoeffs;
@@ -192,36 +180,54 @@ int main(int argc, char *argv[]) {
 
     boardDetector b(camMatrix, distCoeffs);
 
-    while(inputVideo.isOpened()) {
-        double tick = (double)getTickCount();
+    //-----------------------------------------------------  ros initialization
+	double freq_ros;
+    std::string nodename("ACboard");
+    ros::init(argc, argv, nodename);
+	ros::NodeHandle n(nodename);
 
-        Mat imageCopy;
-        Vec3d rvec, tvec;
+	n.param<double>("/vrep_haptics_frequency", freq_ros, 1000);
+    ros::Rate loop_rate(freq_ros);
 
-        inputVideo >> b.image;
+    Listener l;
+    ros::Subscriber sub1 = n.subscribe("chatter", 10, &Listener::robotPoseCallback, &l);
+	ROS_INFO("Initialization done.");
+
+
+	while(ros::ok() && inputVideo.isOpened()) {
+		double tick = (double)getTickCount();
+
+		Mat imageCopy;
+		Vec3d rvec, tvec;
+
+		inputVideo >> b.image;
 		b.detect(rvec, tvec);
 		b.drawAxis();
 		b.drawDetectedMarkers();
-        // draw results
-        b.image.copyTo(imageCopy);
+		// draw results
+		b.image.copyTo(imageCopy);
 
-        if(b.markersOfBoardDetected > 0){
-        	drawAC(imageCopy, camMatrix, distCoeffs, rvec, tvec);
-        }
+		if(b.markersOfBoardDetected > 0){
+			drawAC(imageCopy, camMatrix, distCoeffs, rvec, tvec);
+		}
+		imshow("out", imageCopy);
+		char key = (char)waitKey(waitTime);
+		if(key == 27) {
+			break;
+		}
 
-        imshow("out", imageCopy);
-        char key = (char)waitKey(waitTime);
-        if(key == 27) break;
+		double currentTime = ((double)getTickCount() - tick) / getTickFrequency();
+		totalTime += currentTime;
+		totalIterations++;
+		if(totalIterations % 30 == 0) {
+			cout << "Detection Time = " << currentTime * 1000 << " ms "
+					<< "(Mean = " << 1000 * totalTime / double(totalIterations) << " ms)" << endl;
+		}
 
-        double currentTime = ((double)getTickCount() - tick) / getTickFrequency();
-        totalTime += currentTime;
-        totalIterations++;
-        if(totalIterations % 30 == 0) {
-            cout << "Detection Time = " << currentTime * 1000 << " ms "
-                 << "(Mean = " << 1000 * totalTime / double(totalIterations) << " ms)" << endl;
-        }
+		ros::spinOnce();
+		loop_rate.sleep();
+	}
 
-    }
 
 
 
@@ -241,6 +247,8 @@ int main(int argc, char *argv[]) {
 //   */
 //  ros::MultiThreadedSpinner s(4);
 //  ros::spin(s);
+	ROS_INFO("Ending Session...\n");
+	ros::shutdown();
 
     return 0;
 }
