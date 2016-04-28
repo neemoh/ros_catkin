@@ -202,9 +202,9 @@ void make_tr(vector< Point3f > axisPoints, vector< Vec3f > & calib_rotm){
 int main(int argc, char *argv[]) {
 
 	//-------------------------------    Get image from camera -----------------------------
-    int camId = 0;
+    int camId = 1;
     Mat camMatrix, distCoeffs;
-	string c = "/home/nearlab/workspace/cameracalib/Debug/out_camera_data.xml";
+	string c = "/home/nima/workspace/arucotest/trust_camera_data.xml";
     int waitTime= 1;
 
     bool readOk = readCameraParameters(c, camMatrix, distCoeffs);
@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
     ros::Rate loop_rate(freq_ros);
 
     Listener l;
-    ros::Subscriber sub1 = n.subscribe("/chatter", 10, &Listener::robotPoseCallback, &l);
+    ros::Subscriber sub1 = n.subscribe("/FRI_CartesianPositionOut", 10, &Listener::robotPoseCallback, &l);
 	ROS_INFO("Initialization done.");
 	int status = 0;
     const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0);
@@ -282,10 +282,14 @@ int main(int argc, char *argv[]) {
         }else if(key == 32){
         	if (status==1){
         	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
+        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
         	}else if (status==2){
         	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
+        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
         	}else if(status == 3){
         	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
+        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
+
         	}
         	status++;
         }
@@ -302,7 +306,7 @@ int main(int argc, char *argv[]) {
         	break;
         }
         if(status==4){
-        	cout << "go the points" << endl;
+        	cout << "got the points" << endl;
         	make_tr(axisPoints, calib_rotm);
         		cout << "x: " << calib_rotm[0].val[0] << " "<< calib_rotm[0].val[1] << " "<< calib_rotm[0].val[2] << endl;
         		cout << "y: " << calib_rotm[1].val[0] << " "<< calib_rotm[1].val[1] << " "<< calib_rotm[1].val[2] << endl;
@@ -314,6 +318,8 @@ int main(int argc, char *argv[]) {
         	vector<Point2f> toolPoint2d;
         	toolPoint3d.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
 		    projectPoints(toolPoint3d, rvec, tvec, camMatrix, distCoeffs, toolPoint2d);
+		    circle( imageCopy, toolPoint2d[0], 8,   GREEN, 5);
+
 
         }
         imshow("out", imageCopy);
