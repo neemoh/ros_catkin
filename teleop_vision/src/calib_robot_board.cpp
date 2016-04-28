@@ -40,17 +40,19 @@ using namespace cv;
 
 class boardDetector{
 public:
-	boardDetector(Mat& _camMatrix, Mat& _distCoeffs){
-		markersX = 9;
-		markersY = 6;
-		markerLength = 100;
-		markerSeparation = 20;
-		dictionaryId = 9;
-        axisLength = 200;
-		refindStrategy = false;
+	boardDetector(int _markersX,int _markersY, float _markerLength,
+			float _markerSeparation, int _dictionaryId, Mat& _camMatrix,
+			Mat& _distCoeffs ){
 
+		markersX = _markersX;
+		markersY = _markersY;
+		markerLength = _markerLength;
+		markerSeparation = _markerSeparation;
+		dictionaryId = _dictionaryId;
 		camMatrix = _camMatrix;
 		distCoeffs = _distCoeffs;
+        axisLength = 200;
+		refindStrategy = false;
 		markersOfBoardDetected = 0;
 		detectorParams = aruco::DetectorParameters::create();
 		detectorParams->doCornerRefinement = true; // do corner refinement in markers
@@ -144,28 +146,10 @@ void drawAC(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distC
     line(_image, imagePoints[7], imagePoints[4], Scalar(200, 100, 10), 2);
 }
 
-ros::Duration d(0.01);
 
-class Listener
-{
-public:
-	void robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
-	{
-		//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
-		robotPose.position = msg->position;
-		robotPose.orientation = msg->orientation;
-		d.sleep();
-	}
-	//  void chatter2(const std_msgs::String::ConstPtr& msg)
-	//  {
-	//    ROS_INFO_STREAM("chatter2: [" << msg->data << "] [thread=" << boost::this_thread::get_id() << "]");
-	//    d.sleep();
-	//  }
-public:
-	geometry_msgs::Pose robotPose;
-};
 
-void make_tr(vector< Point3f > axisPoints, vector< Vec3f > & calib_rotm){
+
+void make_tr(vector< Point3f > axisPoints, Matx33d & _calib_rotm){
 
 	Vec3f x = Vec3f(axisPoints[1].x - axisPoints[0].x,
 						axisPoints[1].y - axisPoints[0].y,
@@ -174,84 +158,142 @@ void make_tr(vector< Point3f > axisPoints, vector< Vec3f > & calib_rotm){
 	Vec3f y = Vec3f(axisPoints[2].x - axisPoints[0].x,
 						axisPoints[2].y - axisPoints[0].y,
 						axisPoints[2].z - axisPoints[0].z);
-
 //	Vec3f x = Vec3f(-2.0, -0.2, 0.02);
 //	Vec3f y = Vec3f(-0.2, -2.0, 0.04);
-
 	cv::normalize(x,x);
 	cv::normalize(y,y);
 	Vec3f z =  x.cross(y);
 	cv::normalize(z,z);
 	x =  y.cross(z);
 	y =  z.cross(x);
+	Matx33d calib_rotm = Matx33d::ones();
 
-	calib_rotm.push_back(x);
-	calib_rotm.push_back(y);
-	calib_rotm.push_back(z);
+	calib_rotm(0,0) = x[0]; calib_rotm(0,1) = y[0]; calib_rotm(0,2) = z[0];
+	calib_rotm(1,0) = x[1]; calib_rotm(1,1) = y[1]; calib_rotm(1,2) = z[1];
+	calib_rotm(2,0) = x[2]; calib_rotm(2,1) = y[2]; calib_rotm(2,2) = z[2];
+
+	_calib_rotm = calib_rotm;
+//	calib_rotm.push_back(yy );
+//	calib_rotm.push_back(zz );
+//	calib_rotm.t();
+cout << "finished 1" << endl;
+
 
 //	cout << "x: " << x.val[0] << " "<< x.val[1] << " "<< x.val[2] << endl;
 //	cout << "y: " << y.val[0] << " "<< y.val[1] << " "<< y.val[2] << endl;
 //	cout << "z: " << z.val[0] << " "<< z.val[1] << " "<< z.val[2] << endl;
 
-
 }
+class rosObj {
+public:
+	rosObj(int argc, char *argv[]){
+		freq_ros = 0;
+		all_good = false;
+		camId = 0;
+	}
+	void init(){
+		all_good = true;
+		n.param<double>("frequency", freq_ros, 30);
 
+		if(!ros::param::has("calib_robot/cam_data_path"))  {
+			ROS_ERROR("Parameter cam_data_path is required.");
+			all_good = false;
+		}
+		else n.getParam("calib_robot/cam_data_path", cam_data_path_param);
+
+		if(!ros::param::has("calib_robot/robot_topic_name")){
+			ROS_ERROR("Parameter robot_topic_name is required.");
+			all_good = false;
+		}
+		else n.getParam("calib_robot/robot_topic_name", robot_topic_name_param);
+
+		n.param<int>("calib_robot/markersX", markersX_param, 9);
+		n.param<int>("calib_robot/markersY", markersY_param, 6);
+		n.param<float>("calib_robot/markerLength_px", markerLength_px_param, 100);
+		n.param<float>("calib_robot/markerSeparation_px", markerSeparation_px_param, 20);
+		n.param<int>("calib_robot/dictionaryId", dictionaryId_param, 9);
+		n.param<float>("calib_robot/markerlength_m", markerlength_m_param, 0.027);
+
+	}
+	void robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
+	{
+		//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
+		robotPose.position = msg->position;
+		robotPose.orientation = msg->orientation;
+//		ros::Duration d(0.01);
+//		d.sleep();
+	}
+public:
+	bool all_good;
+	std::string cam_data_path_param;
+	std::string robot_topic_name_param;
+	ros::NodeHandle n;
+	double freq_ros;
+	int camId;
+//	ros::Subscriber sub_robot;
+	geometry_msgs::Pose robotPose;
+	int markersX_param;
+	int markersY_param;
+	float markerLength_px_param;
+	float markerSeparation_px_param;
+	int dictionaryId_param;
+	float markerlength_m_param;
+};
 
 /**
  */
 int main(int argc, char *argv[]) {
+	ros::init(argc, argv, "ACboard");
+	rosObj r(argc, argv);
+	r.init();
+	if(!r.all_good) return 1;
+	string robot_topic_name;
 
-	//-------------------------------    Get image from camera -----------------------------
+
+    //-----------------------------------------------------  ros initialization
+
+	ros::Rate loop_rate(r.freq_ros);
+	ros::Subscriber sub_robot = r.n.subscribe(r.robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
+
+    int status = 0;
+    const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0);
+    vector< Point3f > axisPoints,calibPoints3d;
+    vector<Point2f> calibPoints2d;
+    Matx33d  calib_rotm= Matx33d::zeros();
+	double m_to_px = r.markerLength_px_param/r.markerlength_m_param;
+
+    //-------------------------------    Set up the camera  -----------------------------
     int camId = 1;
     Mat camMatrix, distCoeffs;
-	string c = "/home/nima/workspace/arucotest/trust_camera_data.xml";
-    int waitTime= 1;
+//    string cam_data_path = "/home/nearlab/workspace/cameracalib/Debug/out_camera_data.xml";
 
-    bool readOk = readCameraParameters(c, camMatrix, distCoeffs);
+    int waitTime= 1;
+    bool readOk = readCameraParameters(r.cam_data_path_param, camMatrix, distCoeffs);
     if(!readOk) {
     	cerr << "Invalid camera file" << endl;
     	return 0;
     }
     VideoCapture inputVideo;
-    inputVideo.open(camId);
+    inputVideo.open(r.camId);
 
     double totalTime = 0;
     int totalIterations = 0;
 
-    boardDetector b(camMatrix, distCoeffs);
-
-    //-----------------------------------------------------  ros initialization
-	double freq_ros;
-    std::string nodename("ACboard");
-    ros::init(argc, argv, nodename);
-	ros::NodeHandle n(nodename);
-
-	n.param<double>("/vrep_haptics_frequency", freq_ros, 30);
-    ros::Rate loop_rate(freq_ros);
-
-    Listener l;
-    ros::Subscriber sub1 = n.subscribe("/FRI_CartesianPositionOut", 10, &Listener::robotPoseCallback, &l);
-	ROS_INFO("Initialization done.");
-	int status = 0;
-    const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0);
-    vector< Point3f > axisPoints,calibPoints3d;
-    vector<Point2f> calibPoints2d;
-    vector< Vec3f > calib_rotm;
-
+    boardDetector b(r.markersX_param, r.markersY_param,  r.markerLength_px_param,
+			 r.markerSeparation_px_param,  r.dictionaryId_param, camMatrix, distCoeffs);
 
     calibPoints3d.push_back(Point3f(0, 0, 0));
     calibPoints3d.push_back(Point3f(b.markersX*b.markerLength + (b.markersX-1)* b.markerSeparation, 0, 0));
     calibPoints3d.push_back(Point3f(0, b.markersY*b.markerLength + (b.markersY-1)* b.markerSeparation, 0));
 
+    ROS_INFO("Initialization done.");
 
+    while(ros::ok() && inputVideo.isOpened()) {
 
+    	Mat imageCopy;
+    	Vec3d rvec, tvec;
 
-	while(ros::ok() && inputVideo.isOpened()) {
-
-		Mat imageCopy;
-		Vec3d rvec, tvec;
-
-		inputVideo >> b.image;
+    	inputVideo >> b.image;
 		b.detect(rvec, tvec);
 		b.drawAxis();
 //		b.drawDetectedMarkers();
@@ -281,15 +323,14 @@ int main(int argc, char *argv[]) {
         	break;
         }else if(key == 32){
         	if (status==1){
-        	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
-        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
+        	    axisPoints.push_back(Point3f(r.robotPose.position.x,r.robotPose.position.y,r.robotPose.position.z));
+        		cout << "got: " << r.robotPose.position.x << " "<< r.robotPose.position.y << " "<< r.robotPose.position.z << endl;
         	}else if (status==2){
-        	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
-        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
+        	    axisPoints.push_back(Point3f(r.robotPose.position.x,r.robotPose.position.y,r.robotPose.position.z));
+        		cout << "got: " << r.robotPose.position.x << " "<< r.robotPose.position.y << " "<< r.robotPose.position.z << endl;
         	}else if(status == 3){
-        	    axisPoints.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
-        		cout << "got: " << l.robotPose.position.x << " "<< l.robotPose.position.y << " "<< l.robotPose.position.z << endl;
-
+        	    axisPoints.push_back(Point3f(r.robotPose.position.x,r.robotPose.position.y,r.robotPose.position.z));
+        		cout << "got: " << r.robotPose.position.x << " "<< r.robotPose.position.y << " "<< r.robotPose.position.z << endl;
         	}
         	status++;
         }
@@ -306,21 +347,31 @@ int main(int argc, char *argv[]) {
         	break;
         }
         if(status==4){
-        	cout << "got the points" << endl;
         	make_tr(axisPoints, calib_rotm);
-        		cout << "x: " << calib_rotm[0].val[0] << " "<< calib_rotm[0].val[1] << " "<< calib_rotm[0].val[2] << endl;
-        		cout << "y: " << calib_rotm[1].val[0] << " "<< calib_rotm[1].val[1] << " "<< calib_rotm[1].val[2] << endl;
-        		cout << "z: " << calib_rotm[2].val[0] << " "<< calib_rotm[2].val[1] << " "<< calib_rotm[2].val[2] << endl;
+        	cout << "Rotation:" <<endl;
+        	cout <<  calib_rotm(0,0) << " "<< calib_rotm(0,1) << " "<< calib_rotm(0,2) << endl;
+        	cout <<  calib_rotm(1,0) << " "<< calib_rotm(1,1) << " "<< calib_rotm(1,2) << endl;
+        	cout <<  calib_rotm(2,0) << " "<< calib_rotm(2,1) << " "<< calib_rotm(2,2) << endl;
+        	cout << "Translation:" <<endl;
+        	cout << axisPoints[0].x << endl;
+        	cout << axisPoints[0].y << endl;
+        	cout << axisPoints[0].z << endl;
+
         	status++;
         }
         else if(status==5){
-        	vector<Point3f> toolPoint3d;
-        	vector<Point2f> toolPoint2d;
-        	toolPoint3d.push_back(Point3f(l.robotPose.position.x,l.robotPose.position.y,l.robotPose.position.z));
-		    projectPoints(toolPoint3d, rvec, tvec, camMatrix, distCoeffs, toolPoint2d);
+
+        	Point3d calib_translation = Point3d(r.robotPose.position.x *m_to_px, r.robotPose.position.y *m_to_px, r.robotPose.position.z *m_to_px);
+        	Point3d toolPoint3d_crf; //cam ref frame
+        	Point3d toolPoint3d_rrf; //robot ref frame
+        	toolPoint3d_crf = calib_rotm.t() * (toolPoint3d_rrf - calib_translation);
+
+        	vector<Point3d> toolPoint3d_vec_crf; //cam ref frame
+        	vector<Point2d> toolPoint2d;
+        	toolPoint3d_vec_crf.push_back(toolPoint3d_crf);
+
+        	projectPoints(toolPoint3d_vec_crf, rvec, tvec, camMatrix, distCoeffs, toolPoint2d);
 		    circle( imageCopy, toolPoint2d[0], 8,   GREEN, 5);
-
-
         }
         imshow("out", imageCopy);
 
