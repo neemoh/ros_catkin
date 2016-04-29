@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+	tf_conversions
 )
 find_package(OpenCV REQUIRED)
 ## System dependencies are found with CMake's conventions
