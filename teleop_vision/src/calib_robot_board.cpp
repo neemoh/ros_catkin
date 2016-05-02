@@ -117,34 +117,35 @@ static bool readCameraParameters(string filename, Mat &camMatrix, Mat &distCoeff
 
 class rosObj {
 public:
-	rosObj(int argc, char *argv[]){
+	rosObj(int argc, char *argv[], string n_name){
 		freq_ros = 0;
 		all_good = false;
 		camId_param = 0;
+		node_name = n_name;
 	}
 	void init(){
 		all_good = true;
 		n.param<double>("frequency", freq_ros, 25);
 
-		if(!ros::param::has("calib_robot/cam_data_path"))  {
+		if(!ros::param::has(node_name+"/cam_data_path"))  {
 			ROS_ERROR("Parameter cam_data_path is required.");
 			all_good = false;
 		}
-		else n.getParam("calib_robot/cam_data_path", cam_data_path_param);
+		else n.getParam(node_name+"/cam_data_path", cam_data_path_param);
 
-		if(!ros::param::has("calib_robot/robot_topic_name")){
+		if(!ros::param::has(node_name+"/robot_topic_name")){
 			ROS_ERROR("Parameter robot_topic_name is required.");
 			all_good = false;
 		}
-		else n.getParam("calib_robot/robot_topic_name", robot_topic_name_param);
+		else n.getParam(node_name+"/robot_topic_name", robot_topic_name_param);
 
-		n.param<int>("calib_robot/markersX", markersX_param, 9);
-		n.param<int>("calib_robot/markersY", markersY_param, 6);
-		n.param<float>("calib_robot/markerLength_px", markerLength_px_param, 100);
-		n.param<float>("calib_robot/markerSeparation_px", markerSeparation_px_param, 20);
-		n.param<int>("calib_robot/dictionaryId", dictionaryId_param, 9);
-		n.param<float>("calib_robot/markerlength_m", markerlength_m_param, 0.027);
-		n.param<int>("calib_robot/camId", camId_param, 0);
+		n.param<int>(node_name+"/markersX", markersX_param, 9);
+		n.param<int>(node_name+"/markersY", markersY_param, 6);
+		n.param<float>(node_name+"/markerLength_px", markerLength_px_param, 100);
+		n.param<float>(node_name+"/markerSeparation_px", markerSeparation_px_param, 20);
+		n.param<int>(node_name+"/dictionaryId", dictionaryId_param, 9);
+		n.param<float>(node_name+"/markerlength_m", markerlength_m_param, 0.027);
+		n.param<int>(node_name+"/camId", camId_param, 0);
 
 
 	}
@@ -160,6 +161,7 @@ public:
 	bool all_good;
 	std::string cam_data_path_param;
 	std::string robot_topic_name_param;
+	std::string node_name;
 	ros::NodeHandle n;
 	double freq_ros;
 	int camId_param;
@@ -176,14 +178,17 @@ public:
 void rvecTokdlRot(const cv::Vec3d _rvec, KDL::Rotation & _kdl);
 void rvectvecToKdlFrame(const cv::Vec3d _rvec,const cv::Vec3d _tvec, KDL::Frame & _kdl);
 void matx33dToKdlRot(const cv::Matx33d _mat, KDL::Rotation & _kdl );
+void poseMsgToVector(const geometry_msgs::Pose in_pose, vector<double>& out_vec);
 void make_tr(vector< Point3d > axisPoints, Matx33d & _rotm, Vec3d & br_tvec);
 void drawAC(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distCoeffs,
               InputArray _rvec, InputArray _tvec);
 /**
  */
 int main(int argc, char *argv[]) {
-	ros::init(argc, argv, "ACboard");
-	rosObj r(argc, argv);
+
+	std::string node_name("calib_robot");
+	ros::init(argc, argv, node_name);
+	rosObj r(argc, argv, node_name);
 	r.init();
 //	if(!r.all_good) return 1;
 	string robot_topic_name;
@@ -288,6 +293,8 @@ int main(int argc, char *argv[]) {
         }
 
         //----------------------------- show calibration points ------------------------------------------------------------------------------
+		vector<double> br_vec(7, 0.0);
+
         switch (status){
 		case 1:
 		    circle( imageCopy, calibPoints2d[0], 5,   CYAN, 4);
@@ -300,6 +307,7 @@ int main(int argc, char *argv[]) {
 			break;
 
 		case 4:
+			// Hgot the points, find the transform and set it as a parameter
 			make_tr(axisPoints, br_rotm, br_tvec);
 			matx33dToKdlRot(br_rotm, br_frame.M);
 			br_frame.p.data[0] = br_tvec.val[0];
@@ -316,6 +324,11 @@ int main(int argc, char *argv[]) {
 			cout << axisPoints[0].z << endl;
 
 			tf::poseKDLToMsg(br_frame, br_pose_msg);
+
+			poseMsgToVector(br_pose_msg, br_vec);
+			r.n.setParam(node_name+"/board_to_robot_tr", br_vec);
+			cout<< "Set the board_to_robot_tr parameter: " << br_vec[0] <<" "<<br_vec[1] <<" "<<br_vec[2] <<" "<<
+					br_vec[3] <<" "<<br_vec[4] <<" "<<br_vec[5] <<" "<<br_vec[6] << endl;
 
 			pub_br_pose.publish(br_pose_msg);
 			status++;
@@ -377,7 +390,16 @@ void matx33dToKdlRot(const cv::Matx33d _mat, KDL::Rotation & _kdl ){
 
 }
 
+void poseMsgToVector(const geometry_msgs::Pose in_pose, vector<double>& out_vec) {
 
+	out_vec.at(0) = in_pose.position.x;
+	out_vec.at(1) = in_pose.position.y;
+	out_vec.at(2) = in_pose.position.z;
+	out_vec.at(3) = in_pose.orientation.x;
+	out_vec.at(4) = in_pose.orientation.y;
+	out_vec.at(5) = in_pose.orientation.z;
+	out_vec.at(6) = in_pose.orientation.w;
+}
 void make_tr(vector< Point3d > axisPoints, Matx33d & _rotm, Vec3d & br_tvec){
 
 	br_tvec = axisPoints[0];

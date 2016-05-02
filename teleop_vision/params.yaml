@@ -1,0 +1,16 @@
+calib_robot:
+  board_to_robot_tr: [-0.5585731863975525, 0.010883649811148643, 0.05440842732787132,
+    0.00910061168678479, 0.0020851825281752025, 0.07899866860243883, 0.9968310152114152]
+  camId: 1
+  cam_data_path: /home/nima/workspace/arucotest/trust_camera_data.xml
+  markerlength_m: 0.027
+  robot_topic_name: /FRI_CartesianPositionOut
+rosdistro: 'jade
+
+  '
+roslaunch:
+  uris: {}
+rosversion: '1.11.16
+
+  '
+run_id: 34f76f0e-1063-11e6-9d78-002586e053f8
