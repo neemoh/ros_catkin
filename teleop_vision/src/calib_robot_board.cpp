@@ -193,7 +193,6 @@ int main(int argc, char *argv[]) {
 //	if(!r.all_good) return 1;
 	string robot_topic_name;
 
-
     //-----------------------------------------------------  ros initialization
 
 	ros::Rate loop_rate(r.freq_ros);

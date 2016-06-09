@@ -1,8 +1,9 @@
 <launch>
         <node pkg="teleop_vision" type="calib_robot" name="calib_robot">
       		<param name="robot_topic_name" value="/FRI_CartesianPositionOut" type="str" />      
-		<param name="cam_data_path" value="/home/nearlab/workspace/cameracalib/Debug/out_camera_data.xml" type="str" />
-		<param name="camId" value="0" type="int" />
+		<param name="cam_data_path" value= "/home/nima/workspace/arucotest/trust_camera_data.xml" type="str" />
+		<param name="camId" value="1" type="int" />
+		<param name="markerlength_m" value="0.027" type="double" />
          </node>
 
 </launch>
