@@ -19,7 +19,6 @@
 #include "kdl/frames.hpp"
 #include "geometry_msgs/Pose.h"
 #include <tf_conversions/tf_kdl.h>
-#include <boost/thread.hpp>
 
 using namespace std;
 using namespace cv;
@@ -71,22 +70,27 @@ public:
 //-----------------------------------------------------------------------------------
 
 class rosObj {
+
 public:
 
 	rosObj(int argc, char *argv[], string n_name);
 	void init();
 	void robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg);
+	void forceCallback(const geometry_msgs::Wrench::ConstPtr& msg);
 
 public:
 	bool all_good;
-	std::string cam_data_path_param;
-	std::string robot_topic_name_param;
+
 	std::string node_name;
 	ros::NodeHandle n;
+	geometry_msgs::Pose robotPose;
+	geometry_msgs::Wrench msrd_force;
+
 	double freq_ros;
 	int camId_param;
-//	ros::Subscriber sub_robot;
-	geometry_msgs::Pose robotPose;
+	std::string cam_data_path_param;
+	std::string robot_topic_name_param;
+	std::string force_topic_name_param;
 	vector<double> board_to_robot_tr_param;
 	int markersX_param;
 	int markersY_param;
@@ -96,7 +100,26 @@ public:
 	float markerlength_m_param;
 };
 
+class palpMap{
+public:
 
+	palpMap(){palp_done = false; counter=0;};
+
+	void registerPoint(const Point3d coord, const geometry_msgs::Wrench);
+
+	vector<Point3d> getCoordinates(){return coordinates;};
+
+	vector<Scalar> getColors(){return colors;};
+
+	void reset();
+
+	bool palp_done;
+	int counter;
+private:
+	vector<Point3d> coordinates;
+	vector<Scalar> colors;
+
+};
 
 
 //-----------------------------------------------------------------------------------

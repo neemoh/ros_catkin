@@ -1,15 +1,16 @@
 calib_robot:
-  board_to_robot_tr: [-0.5585731863975525, 0.010883649811148643, 0.05440842732787132,
-    0.00910061168678479, 0.0020851825281752025, 0.07899866860243883, 0.9968310152114152]
-  camId: 1
+  board_to_robot_tr: [-0.29118239879608154, 0.3858166038990021, 0.1341080516576767,
+    -0.0023649206167521194, 0.007914303455560165, -0.999784420882547, 0.015175554232083766]
+  camId: 0
   cam_data_path: /home/nima/workspace/arucotest/trust_camera_data.xml
+  force_topic_name: /optoforce_publisher
   markerlength_m: 0.027
-  robot_topic_name: /FRI_CartesianPositionOut
+  robot_topic_name: /FKCartCurrent
 rosdistro: 'jade
 
   '
 roslaunch:
-  uris: {}
+  uris: {host_192_168_10_10__55944: 'http://192.168.10.10:55944/'}
 rosversion: '1.11.16
 
   '

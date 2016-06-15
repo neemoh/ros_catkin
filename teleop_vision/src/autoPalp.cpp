@@ -6,7 +6,7 @@
  */
 
 
-#include "board_ac.hpp"
+#include "autoPalp.hpp"
 
 using namespace std;
 using namespace cv;
@@ -50,6 +50,13 @@ rosObj::rosObj(int argc, char *argv[], string n_name){
  */
 int main(int argc, char *argv[]) {
 
+
+
+    cvNamedWindow("AutoPalp", CV_WINDOW_NORMAL);
+    cvSetWindowProperty("AutoPalp", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
+
+
+
 	std::string node_name("calib_robot");
 	ros::init(argc, argv, node_name);
 	rosObj r(argc, argv, node_name);
@@ -63,12 +70,17 @@ int main(int argc, char *argv[]) {
 	//-----------------------------------------------------------------------------------
 	ros::Rate loop_rate(r.freq_ros);
     ros::Duration d(0.5);
-	string robot_topic_name_param = "/FKCartCurrent";
-	ros::Subscriber sub_robot = r.n.subscribe(robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
+//	string robot_topic_name_param = "/FKCartCurrent";
+//	string force_topic_name_param = "/FKCartCurrent";
+
+    cout << "r.force_topic_name_param  "  << r.force_topic_name_param << endl;
+    cout << "r.robot_topic_name_param  "  << r.robot_topic_name_param << endl;
+	ros::Subscriber sub_robot = r.n.subscribe(r.robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
+	ros::Subscriber sub_force = r.n.subscribe(r.force_topic_name_param, 10, &rosObj::forceCallback, &r);
 	ros::Publisher pub_br_pose = r.n.advertise<geometry_msgs::Pose>("board_to_robot_pose",1,0);
 	ros::Publisher pub_bc_pose = r.n.advertise<geometry_msgs::Pose>("board_to_cam_pose",1,0);
 
-    int status = 1;
+    int status = 2;
     const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0), ORANGE(35,64,255);
 	vector<Point3d> calibPoints3d;
     vector<Point2d> calibPoints2d;
@@ -124,6 +136,11 @@ int main(int argc, char *argv[]) {
     calibPoints3d.push_back(Point3f(b.markersX*b.markerLength + (b.markersX-1)* b.markerSeparation, 0, 0));
     calibPoints3d.push_back(Point3f(0, b.markersY*b.markerLength + (b.markersY-1)* b.markerSeparation, 0));
 
+    //-----------------------------------------------------------------------------------
+    // Construct the Palpation object
+    //-----------------------------------------------------------------------------------
+    palpMap pm;
+	vector<Point2d> palpPoints2d;
 
     while(ros::ok() && inputVideo.isOpened()) {
 
@@ -137,12 +154,12 @@ int main(int argc, char *argv[]) {
     	//		b.drawDetectedMarkers();
     	// draw results
     	b.image.copyTo(imageCopy);
+//
+//    	if(b.markersOfBoardDetected > 0){
+//    		drawAC(imageCopy, camMatrix, distCoeffs, bc_rvec, bc_tvec);
+//    	}
 
-    	if(b.markersOfBoardDetected > 0){
-    		drawAC(imageCopy, camMatrix, distCoeffs, bc_rvec, bc_tvec);
-    	}
-
-    	msg = ("press k to calibrate.");
+    	msg = ("press k to calibrate or p to start palpation.");
         char key = (char)waitKey(waitTime);
         if(key == 27)
         	break;
@@ -150,7 +167,16 @@ int main(int argc, char *argv[]) {
         	status = 0;
         	cbr.reset();
         }
+        else if(key == 112){
 
+        	status = (status==1) ? 2:1;
+
+    		//reset the palpation map
+        	if(status==1){
+        		pm.reset();
+        		pm.palp_done = false;
+        	}
+        }
 
     	//-----------------------------------------------------------------------------------
     	// calibration if needed
@@ -171,12 +197,11 @@ int main(int argc, char *argv[]) {
         		//space pressed save the position of the point
         		cbr.setCalibpoint(r.robotPose.position.x,r.robotPose.position.y,r.robotPose.position.z);
 
-
         		// check the state of calibration
         		if(cbr.updateMe(msg, imageCopy)){
 
         			// calibration is done
-        			status = 1;
+        			status = 2;
 
         			// get the calibration data
         			cbr.get_tr(br_rotm,br_tvec);
@@ -195,6 +220,33 @@ int main(int argc, char *argv[]) {
         		}
         	}
 
+
+        }
+        else if(status==1){
+        	//-----------------------------------------------------------------------------------
+        	// Palpation mode
+        	//-----------------------------------------------------------------------------------
+
+        	// just consider 1 out of three runs, to reduce the number of generate points and memory load
+        	if(pm.counter <0){
+        		pm.counter++;
+        	}
+        	else{
+        		pm.counter = 0;
+        		Point3d br_trans = Point3d( br_frame.p[0],  br_frame.p[1],  br_frame.p[2]);
+        		// save current position of the tool
+        		Point3d toolPoint3d_rrf = Point3d(r.robotPose.position.x , r.robotPose.position.y, r.robotPose.position.z);
+
+        		// taking the robot tool tip from the robot ref frame to board ref frame and convert to pixles from meters
+        		Point3d temp = br_rotm.t() * ( toolPoint3d_rrf - br_trans);
+        		Point3d toolPoint3d_crf = Point3d(temp.x* m_to_px, temp.y* m_to_px, temp.z* m_to_px) ;
+
+        		// register current point and force
+        		pm.registerPoint(toolPoint3d_crf, r.msrd_force);
+        		pm.palp_done = true;
+
+        	}
+    		msg = "In automatic palpation mode. Press p to terminate";
 
         }
         else{
@@ -225,6 +277,20 @@ int main(int argc, char *argv[]) {
         }
 
     	//-----------------------------------------------------------------------------------
+    	// draw the palpation map
+    	//-----------------------------------------------------------------------------------
+        if(pm.palp_done){
+
+
+        	projectPoints(pm.getCoordinates(), bc_rvec, bc_tvec, camMatrix, distCoeffs, palpPoints2d);
+
+        	for(int i=0; i<(pm.getCoordinates().size()); i++){
+            	circle( imageCopy, palpPoints2d[i], 4, pm.getColors()[i], -1);
+
+        	}
+        }
+
+    	//-----------------------------------------------------------------------------------
     	// Output Text
     	//-----------------------------------------------------------------------------------
     	int baseLine = 0;
@@ -233,7 +299,7 @@ int main(int argc, char *argv[]) {
     	Point textOrigin(10,10);
     	putText( imageCopy, msg, textOrigin, 1, 1, (status == 0) ?   RED:GREEN);
 
-        imshow("out", imageCopy);
+        imshow("AutoPalp", imageCopy);
 
         ros::spinOnce();
         loop_rate.sleep();
@@ -341,8 +407,8 @@ void drawAC(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distC
     double w = 100;
     double h = 100;
     double d = 200;
-    double x_start = 250;
-    double y_start = 450;
+    double x_start = 960;
+    double y_start = 600;
     double z_start = 0;
     axisPoints.push_back(Point3f(x_start,   y_start+h, z_start));
     axisPoints.push_back(Point3f(x_start+w, y_start+h, z_start));
@@ -402,16 +468,23 @@ void rosObj::init(){
 	else n.getParam(node_name+"/cam_data_path", cam_data_path_param);
 
 	if(!ros::param::has(node_name+"/robot_topic_name")){
-		ROS_ERROR("Parameter robot_topic_name is required.");
-		all_good = false;
+		ROS_INFO("Parameter robot_topic_name not found. Setting /FKCartCurrent");
+		robot_topic_name_param = "/FKCartCurrent";
 	}
 	else n.getParam(node_name+"/robot_topic_name", robot_topic_name_param);
+
+	if(!ros::param::has(node_name+"/force_topic_name")){
+		ROS_INFO("Parameter force_topic_name not found. Setting /force");
+		force_topic_name_param = "/force";
+	}
+	else n.getParam(node_name+"/force_topic_name", force_topic_name_param);
 
 	if(!ros::param::has(node_name+"/board_to_robot_tr")){
 		ROS_INFO("Parameter board_to_robot_tr is not set. Calibration is required.");
 //		all_good = false;
 	}
 	else n.getParam(node_name+"/board_to_robot_tr", board_to_robot_tr_param);
+
 
 	n.param<int>(node_name+"/markersX", markersX_param, 9);
 	n.param<int>(node_name+"/markersY", markersY_param, 6);
@@ -438,8 +511,57 @@ void rosObj::robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
 }
 
 
+//-----------------------------------------------------------------------------------
+// forceCallback
+//-----------------------------------------------------------------------------------
+
+void rosObj::forceCallback(const geometry_msgs::Wrench::ConstPtr& msg)
+{
+	//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
+	msrd_force.force = msg->force;
+
+//		ros::Duration d(0.01);
+//		d.sleep();
+}
 
 
+//-----------------------------------------------------------------------------------
+// PALPATION MAP CLASS METHODS
+//-----------------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------------
+// registerPoint
+//-----------------------------------------------------------------------------------
+
+void palpMap::registerPoint(const Point3d _coord, const geometry_msgs::Wrench _wrench){
+
+	//Save the coordinates
+	coordinates.push_back(_coord);
+
+	//generate a color based on the z axis force
+	double fz = _wrench.force.z;
+	if(fz<0)
+		fz=0;
+//	else
+//		fz-=4;
+
+	double f_max = 5;
+	if(fz > f_max)
+		fz = f_max;
+	colors.push_back(Scalar( (1-fz/f_max)*255, 20, (fz/f_max)*255 ));
+
+}
+//-----------------------------------------------------------------------------------
+// reset. remove saved coordinates and colors
+//-----------------------------------------------------------------------------------
+void palpMap::reset(){
+
+	while(coordinates.size()>0){
+		coordinates.pop_back();
+		colors.pop_back();
+	}
+
+}
 
 //-----------------------------------------------------------------------------------
 // BOARD DETECtOR CLASS METHODS
