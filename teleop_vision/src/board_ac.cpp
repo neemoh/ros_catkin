@@ -55,7 +55,6 @@ int main(int argc, char *argv[]) {
 	rosObj r(argc, argv, node_name);
 	r.init();
 //	if(!r.all_good) return 1;
-	string robot_topic_name;
 
 
 	//-----------------------------------------------------------------------------------
@@ -63,10 +62,9 @@ int main(int argc, char *argv[]) {
 	//-----------------------------------------------------------------------------------
 	ros::Rate loop_rate(r.freq_ros);
     ros::Duration d(0.5);
-	string robot_topic_name_param = "/FKCartCurrent";
-	ros::Subscriber sub_robot = r.n.subscribe(robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
-	ros::Publisher pub_br_pose = r.n.advertise<geometry_msgs::Pose>("board_to_robot_pose",1,0);
-	ros::Publisher pub_bc_pose = r.n.advertise<geometry_msgs::Pose>("board_to_cam_pose",1,0);
+	ros::Subscriber sub_robot = r.n.subscribe(r.robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
+//	ros::Publisher pub_br_pose = r.n.advertise<geometry_msgs::Pose>("board_to_robot_pose",1,0);
+	ros::Publisher pub_cam_to_robot_pose = r.n.advertise<geometry_msgs::Pose>("cam_to_robot_pose",1,0);
 
     int status = 1;
     const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0), ORANGE(35,64,255);
@@ -127,7 +125,7 @@ int main(int argc, char *argv[]) {
 
     while(ros::ok() && inputVideo.isOpened()) {
 
-    	//-----------------------------------------------------------------------------------
+    	//---------------------------------------ged--------------------------------------------
     	// DETECT BOARD
     	//-----------------------------------------------------------------------------------
     	inputVideo >> b.image;
@@ -150,7 +148,6 @@ int main(int argc, char *argv[]) {
         	status = 0;
         	cbr.reset();
         }
-
 
     	//-----------------------------------------------------------------------------------
     	// calibration if needed
@@ -191,7 +188,7 @@ int main(int argc, char *argv[]) {
         			poseMsgToVector(br_pose_msg, br_vec);
         			r.n.setParam(node_name+"/board_to_robot_tr", br_vec);
         			cout<< "Set the board_to_robot_tr parameter: " << br_vec << endl;
-        			pub_br_pose.publish(br_pose_msg);
+//        			pub_br_pose.publish(br_pose_msg);
         		}
         	}
 
@@ -214,13 +211,14 @@ int main(int argc, char *argv[]) {
         	toolPoint3d_vec_crf.push_back(toolPoint3d_crf);
 
         	projectPoints(toolPoint3d_vec_crf, bc_rvec, bc_tvec, camMatrix, distCoeffs, toolPoint2d);
-        	circle( imageCopy, toolPoint2d[0], 4, ORANGE, 2);
+        	circle( imageCopy, toolPoint2d[0], 3, ORANGE, 2);
 
         	//-----------------------------------------------------------------------------------
-        	// publish board to camera pos
+        	// publish camera to robot pose
         	//-----------------------------------------------------------------------------------
-        	tf::poseKDLToMsg(bc_frame, bc_pose_msg);
-        	pub_bc_pose.publish(bc_pose_msg);
+        	KDL::Frame cam_to_robot = br_frame * bc_frame.Inverse();
+        	tf::poseKDLToMsg(cam_to_robot, bc_pose_msg);
+        	pub_cam_to_robot_pose.publish(bc_pose_msg);
 
         }
 
@@ -406,7 +404,6 @@ void rosObj::init(){
 		all_good = false;
 	}
 	else n.getParam(node_name+"/robot_topic_name", robot_topic_name_param);
-
 	if(!ros::param::has(node_name+"/board_to_robot_tr")){
 		ROS_INFO("Parameter board_to_robot_tr is not set. Calibration is required.");
 //		all_good = false;
