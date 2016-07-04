@@ -11,49 +11,10 @@
 using namespace std;
 using namespace cv;
 
-/**
- */
-boardDetector::boardDetector(int _markersX,int _markersY, float _markerLength,
-		float _markerSeparation, int _dictionaryId, Mat& _camMatrix,
-		Mat& _distCoeffs, double _n_avg ){
 
-	markersX = _markersX;
-	markersY = _markersY;
-	markerLength = _markerLength;
-	markerSeparation = _markerSeparation;
-	dictionaryId = _dictionaryId;
-	camMatrix = _camMatrix;
-	distCoeffs = _distCoeffs;
-    axisLength = 200;
-	refindStrategy = false;
-	markersOfBoardDetected = 0;
-
-	ready = false;
-	init_counter = 0;
-
-	detectorParams = aruco::DetectorParameters::create();
-	detectorParams->doCornerRefinement = true; // do corner refinement in markers
-	dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
-	gridboard =	aruco::GridBoard::create(markersX, markersY, markerLength, markerSeparation, dictionary);
-	board = gridboard.staticCast<aruco::Board>();
-	n_avg = _n_avg;
-}
-
-
-
-
-
-rosObj::rosObj(int argc, char *argv[], string n_name){
-	freq_ros = 0;
-	all_good = false;
-	camId_param = 0;
-	node_name = n_name;
-}
 const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0), ORANGE(35,64,255);
 
 
-/**
- */
 int main(int argc, char *argv[]) {
 
     cvNamedWindow("teleop", CV_WINDOW_NORMAL);
@@ -124,7 +85,7 @@ int main(int argc, char *argv[]) {
 			r.dictionaryId_param,
 			camMatrix,
 			distCoeffs,
-			10);
+			3);
 
     //-----------------------------------------------------------------------------------
     // Construct the calibBoardRobot object
@@ -155,7 +116,8 @@ int main(int argc, char *argv[]) {
     	//-----------------------------------------------------------------------------------
     	inputVideo >> bd.image;
     	bd.detect(bc_rvec, bc_tvec);
-    	bd.drawAxis();
+    	if(bd.ready)
+    		bd.drawAxis();
     	conversions::rvectvecToKdlFrame(bc_rvec, bc_tvec, bc_frame);
     	//		bd.drawDetectedMarkers();
     	// draw results
@@ -220,6 +182,7 @@ int main(int argc, char *argv[]) {
         	if(bd.ready){
         		dr.update_cam_2_board_ref(bc_rvec, bc_tvec);
         		dr.drawSquare(imageCopy);
+        		dr.draw3dCurve(imageCopy);
         		dr.drawToolTip(imageCopy,r.robotPose.position.x , r.robotPose.position.y, r.robotPose.position.z);
 
         		//-----------------------------------------------------------------------------------
@@ -233,12 +196,12 @@ int main(int argc, char *argv[]) {
 
             	Point3d temp0 =  br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px + dr.br_trans);
             	Point3d temp2 =  br_rotm * (dr.sq_points_in_board[2]/dr.m_to_px + dr.br_trans);
-
-            	cout << "dr.br_trans  " << dr.br_trans << endl;
-            	cout<<"0 " << br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px) + dr.br_trans << endl;
-            	cout<<"1 " << br_rotm * (dr.sq_points_in_board[1]/dr.m_to_px) + dr.br_trans << endl;
-            	cout<<"2 " << br_rotm * (dr.sq_points_in_board[2]/dr.m_to_px)  + dr.br_trans << endl;
-            	cout<<"3 " << br_rotm * (dr.sq_points_in_board[3]/dr.m_to_px) + dr.br_trans << endl;
+//
+//            	cout << "dr.br_trans  " << dr.br_trans << endl;
+//            	cout<<"0 " << br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px) + dr.br_trans << endl;
+//            	cout<<"1 " << br_rotm * (dr.sq_points_in_board[1]/dr.m_to_px) + dr.br_trans << endl;
+//            	cout<<"2 " << br_rotm * (dr.sq_points_in_board[2]/dr.m_to_px)  + dr.br_trans << endl;
+//            	cout<<"3 " << br_rotm * (dr.sq_points_in_board[3]/dr.m_to_px) + dr.br_trans << endl;
 
         	}
 
@@ -353,6 +316,17 @@ void drawCube(InputOutputArray _image, InputArray _cameraMatrix, InputArray _dis
 //-----------------------------------------------------------------------------------
 // ROS OBJECT CLASS METHODS
 //-----------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------
+// constructor
+//-----------------------------------------------------------------------------------
+rosObj::rosObj(int argc, char *argv[], string n_name){
+	freq_ros = 0;
+	all_good = false;
+	camId_param = 0;
+	node_name = n_name;
+}
+
+
 
 //-----------------------------------------------------------------------------------
 // init
@@ -410,6 +384,36 @@ void rosObj::robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
 //-----------------------------------------------------------------------------------
 // BOARD DETECtOR CLASS METHODS
 //-----------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------
+// constructor
+//-----------------------------------------------------------------------------------
+boardDetector::boardDetector(int _markersX,int _markersY, float _markerLength,
+		float _markerSeparation, int _dictionaryId, Mat& _camMatrix,
+		Mat& _distCoeffs, double _n_avg ){
+
+	markersX = _markersX;
+	markersY = _markersY;
+	markerLength = _markerLength;
+	markerSeparation = _markerSeparation;
+	dictionaryId = _dictionaryId;
+	camMatrix = _camMatrix;
+	distCoeffs = _distCoeffs;
+    axisLength = 200;
+	refindStrategy = false;
+	markersOfBoardDetected = 0;
+
+	ready = false;
+	init_counter = 0;
+
+	detectorParams = aruco::DetectorParameters::create();
+	detectorParams->doCornerRefinement = true; // do corner refinement in markers
+	dictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME(dictionaryId));
+	gridboard =	aruco::GridBoard::create(markersX, markersY, markerLength, markerSeparation, dictionary);
+	board = gridboard.staticCast<aruco::Board>();
+	n_avg = _n_avg;
+}
+
+
 
 //-----------------------------------------------------------------------------------
 // detect
@@ -442,8 +446,8 @@ void boardDetector::detect(Vec3d& _rvec, Vec3d& _tvec){
 		_rvec = rvec;
 		_tvec = tvec;
 
-		// wait for the initialization of the averaging (5 times the avg window should be enough)
-		if (init_counter < n_avg * 5)
+		// wait for the initialization of the averaging (4 times the avg window should be enough)
+		if (init_counter < n_avg * 4)
 			init_counter++;
 		else
 			ready = true;
@@ -642,6 +646,34 @@ void drawings::drawSquare(InputOutputArray _image) {
 
 }
 
+void drawings::draw3dCurve(InputOutputArray _image) {
+
+    CV_Assert(_image.getMat().total() != 0 &&
+              (_image.getMat().channels() == 1 || _image.getMat().channels() == 3));
+
+    unsigned int n_points = 500;
+    double dx = 100;
+    double dy = 100;
+    double dz = 50;
+
+    for(unsigned int i=0; i<n_points ; i++){
+    	double t = double(i)/double(n_points)*M_PI*2;
+    	curve_points_in_board.push_back(Point3f(500+dx*sin(t), 300+dy*cos(t), dz*sin(2*t) ));
+
+    }
+
+    // project  points
+    vector< Point2d > imagePoints;
+    projectPoints(curve_points_in_board, bc_rvec, bc_tvec, camMatrix, distCoeffs, imagePoints);
+
+    // draw points
+    for(unsigned int i=0; i<n_points ; i++){
+    	circle( _image, imagePoints[i], 1, ORANGE, -1);
+    }
+}
+
+
+
 
 void drawings::drawToolTip(InputOutputArray _image, double _x, double _y, double _z){
 
@@ -657,7 +689,7 @@ void drawings::drawToolTip(InputOutputArray _image, double _x, double _y, double
 	toolPoint3d_vec_crf.push_back(toolPoint3d_crf);
 
 	projectPoints(toolPoint3d_vec_crf, bc_rvec, bc_tvec, camMatrix, distCoeffs, toolPoint2d);
-//	circle( _image, toolPoint2d[0], 3, ORANGE, 2);
+	circle( _image, toolPoint2d[0], 3, ORANGE, 2);
 
 }
 

@@ -19,7 +19,9 @@
 #include "kdl/frames.hpp"
 #include "geometry_msgs/Pose.h"
 #include <tf_conversions/tf_kdl.h>
-#include <boost/thread.hpp>
+
+//#include <pcl-1.7/pcl/point_cloud.h>
+//#include <pcl-1.7/pcl/point_types.h>
 
 using namespace std;
 using namespace cv;
@@ -165,10 +167,12 @@ public:
 	void setSquare(Point3d _center, Point2d _dims) {	sq_center = _center;
 		sq_dims = _dims;};
 
+
 	// drawing a simple rectangle
 	void drawSquare(InputOutputArray _image);
 	void drawToolTip(InputOutputArray _image, double _x, double _y, double _z);
 
+	void draw3dCurve(InputOutputArray _image);
 	void update_cam_2_board_ref(Vec3d _bc_rvec,	Vec3d _bc_tvec){
 		bc_rvec = _bc_rvec; bc_tvec = _bc_tvec;
 	}
@@ -190,6 +194,7 @@ public:
 	Point3d sq_center;
 	Point2d sq_dims;
     vector< Point3d > sq_points_in_board;
+    vector< Point3d > curve_points_in_board;
 
 };
 
