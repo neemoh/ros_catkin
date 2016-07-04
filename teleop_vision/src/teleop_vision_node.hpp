@@ -31,9 +31,15 @@ using namespace cv;
 
 class boardDetector{
 public:
-	boardDetector(int _markersX,int _markersY, float _markerLength,
-			float _markerSeparation, int _dictionaryId, Mat& _camMatrix,
-			Mat& _distCoeffs );
+	boardDetector(
+			int _markersX,
+			int _markersY,
+			float _markerLength,
+			float _markerSeparation,
+			int _dictionaryId,
+			Mat& _camMatrix,
+			Mat& _distCoeffs,
+			double _n_avg);
 
 	void detect(Vec3d& _rvec, Vec3d& _tvec);
 
@@ -53,6 +59,12 @@ public:
 	float axisLength;
 	bool refindStrategy;
 	int markersOfBoardDetected;
+	bool ready;
+
+	// number of averaging points to prevent board frame oscillation
+	double n_avg;
+	unsigned int init_counter;
+
 	Mat image;
 	Mat camMatrix, distCoeffs;
     vector<int> ids;
@@ -124,7 +136,6 @@ public:
 	void reset();
 private:
     vector<Point3d> axisPoints;
-
     bool calib_status;
     string message;
     Vec3d calib_tvec;
@@ -133,13 +144,56 @@ private:
 };
 
 
+
+
 //-----------------------------------------------------------------------------------
-// FUNCTIONS
+// AC CLASS
 //-----------------------------------------------------------------------------------
 
-// drawing a simple box frame
-void drawAC(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distCoeffs,
-              InputArray _rvec, InputArray _tvec);
+class drawings{
+
+public:
+	drawings(
+			const Mat _camMatrix,
+			const Mat _distCoeffs,
+			const KDL::Frame _br_frame,
+			const double m_to_px);
+
+//	ac_square(Point3d _center, Point2d _dims) {	center = _center;
+//	dims = _dims;};
+
+	void setSquare(Point3d _center, Point2d _dims) {	sq_center = _center;
+		sq_dims = _dims;};
+
+	// drawing a simple rectangle
+	void drawSquare(InputOutputArray _image);
+	void drawToolTip(InputOutputArray _image, double _x, double _y, double _z);
+
+	void update_cam_2_board_ref(Vec3d _bc_rvec,	Vec3d _bc_tvec){
+		bc_rvec = _bc_rvec; bc_tvec = _bc_tvec;
+	}
+
+public:
+
+	Mat camMatrix;
+	Mat distCoeffs;
+
+	Vec3d bc_rvec;
+	Vec3d bc_tvec;
+
+//	KDL::Frame br_frame;
+	Point3d br_trans;
+	Matx33d br_rotm;
+
+	double m_to_px;
+	// draw the AC
+	Point3d sq_center;
+	Point2d sq_dims;
+    vector< Point3d > sq_points_in_board;
+
+};
+
+namespace conversions {
 
 // some self explanetory conversions!
 void rvecTokdlRot(const cv::Vec3d _rvec, KDL::Rotation & _kdl);
@@ -153,6 +207,18 @@ void kdlRotToMatx33d(const KDL::Rotation _kdl,  cv::Matx33d &_mat );
 void poseMsgToVector(const geometry_msgs::Pose in_pose, vector<double>& out_vec);
 
 void vectorToPoseMsg(const vector<double> in_vec, geometry_msgs::Pose& out_pose);
+
+
+};
+
+//-----------------------------------------------------------------------------------
+// FUNCTIONS
+//-----------------------------------------------------------------------------------
+
+// drawing a simple box frame
+void drawCube(InputOutputArray _image, InputArray _cameraMatrix, InputArray _distCoeffs,
+              InputArray _rvec, InputArray _tvec);
+
 
 // operator overload to print out vectors
 ostream& operator<<(ostream& out, const vector<double>& vect);
