@@ -285,7 +285,7 @@ int main(int argc, char *argv[]) {
         	projectPoints(pm.getCoordinates(), bc_rvec, bc_tvec, camMatrix, distCoeffs, palpPoints2d);
 
         	for(int i=0; i<(pm.getCoordinates().size()); i++){
-            	circle( imageCopy, palpPoints2d[i], 4, pm.getColors()[i], -1);
+            	circle( imageCopy, palpPoints2d[i], 2, pm.getColors()[i], -1);
 
         	}
         }

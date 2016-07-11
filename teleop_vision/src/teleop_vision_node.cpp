@@ -12,11 +12,10 @@ using namespace std;
 using namespace cv;
 
 
-const Scalar RED(0,0,255), GREEN(0,255,0), CYAN(255,255,0), ORANGE(35,64,255);
+const Scalar RED(50,0,255), GREEN1(30,220,10), GREEN2(80,150,10), BLUE(220,100,20), CYAN(255,255,0), ORANGE(65,64,255);
 
 
 int main(int argc, char *argv[]) {
-
     cvNamedWindow("teleop", CV_WINDOW_NORMAL);
     cvSetWindowProperty("teleop", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
 
@@ -32,15 +31,17 @@ int main(int argc, char *argv[]) {
 	//-----------------------------------------------------------------------------------
 	ros::Rate loop_rate(r.freq_ros);
     ros::Duration d(0.5);
-	ros::Subscriber sub_robot = r.n.subscribe(r.robot_topic_name_param, 10, &rosObj::robotPoseCallback, &r);
+	ros::Subscriber sub_tool_curr = r.n.subscribe(r.tool_curr_topic_name_param, 10, &rosObj::toolCurrCallback, &r);
+	ros::Subscriber sub_tool_dest = r.n.subscribe(r.tool_dest_topic_name_param, 10, &rosObj::toolDestCallback, &r);
 //	ros::Publisher pub_br_pose = r.n.advertise<geometry_msgs::Pose>("board_to_robot_pose",1,0);
-	ros::Publisher pub_cam_to_robot_pose = r.n.advertise<geometry_msgs::Pose>("cam_to_robot_pose",1,0);
+	ros::Publisher pub_cam_to_robot_pose = r.n.advertise<geometry_msgs::Pose>("camToRobotPose",1,0);
+	ros::Publisher pub_ac_point_cloud = r.n.advertise<sensor_msgs::PointCloud2>("acPointCloud",1,0);
 
     int status = 1;
 	vector<Point3d> calibPoints3d;
     vector<Point2d> calibPoints2d;
 	geometry_msgs::Pose br_pose_msg;
-	geometry_msgs::Pose bc_pose_msg;
+	geometry_msgs::Pose cr_pose_msg;
 	Mat imageCopy;
 	Vec3d bc_rvec, bc_tvec, br_tvec;
 	KDL::Frame bc_frame, br_frame;
@@ -106,7 +107,9 @@ int main(int argc, char *argv[]) {
 			distCoeffs,
 			br_frame,
 			r.markerLength_px_param/r.markerlength_m_param);
+
 	dr.setSquare(Point3d(500,350,0),  Point2d(500,100));
+	dr.createCircle(500,350,250,150,200);
 
 
     while(ros::ok() && inputVideo.isOpened()) {
@@ -123,13 +126,19 @@ int main(int argc, char *argv[]) {
     	// draw results
     	bd.image.copyTo(imageCopy);
 
-    	msg = ("press k to calibrate.");
+    	msg = ("press k to calibrate or p to send the AC point cloud.");
         char key = (char)waitKey(waitTime);
         if(key == 27)
         	break;
         else if(key == 107){
         	status = 0;
         	cbr.reset();
+        }
+        else if(key == 112){
+        	dr.getACCloud(r.ac_point_cloud);
+        	cout << "cloud size: " << r.ac_point_cloud.width * r.ac_point_cloud.height << endl;
+        	cout << "vec size: " << dr.ac_points_in_robot.size() << endl;
+        	pub_ac_point_cloud.publish(r.ac_point_cloud);
         }
 
     	//-----------------------------------------------------------------------------------
@@ -149,7 +158,7 @@ int main(int argc, char *argv[]) {
         	if(key == 32){
 
         		//space pressed save the position of the point
-        		cbr.setCalibpoint(r.robotPose.position.x,r.robotPose.position.y,r.robotPose.position.z);
+        		cbr.setCalibpoint(r.tool_curr_pose.position.x,r.tool_curr_pose.position.y,r.tool_curr_pose.position.z);
 
         		// check the state of calibration
         		if(cbr.updateMe(msg, imageCopy)){
@@ -181,21 +190,32 @@ int main(int argc, char *argv[]) {
         	//-----------------------------------------------------------------------------------
         	if(bd.ready){
         		dr.update_cam_2_board_ref(bc_rvec, bc_tvec);
-        		dr.drawSquare(imageCopy);
-        		dr.draw3dCurve(imageCopy);
-        		dr.drawToolTip(imageCopy,r.robotPose.position.x , r.robotPose.position.y, r.robotPose.position.z);
+
+        		//        		dr.drawSquare(imageCopy);
+        		dr.drawACPoints(imageCopy);
+
+        		// draw the tool tip point
+        		dr.drawToolTip(imageCopy,r.tool_curr_pose.position.x , r.tool_curr_pose.position.y, r.tool_curr_pose.position.z, ORANGE);
+
+        		// draw the destination point
+        		dr.drawToolTip(imageCopy,r.tool_dest_pose.position.x , r.tool_dest_pose.position.y, r.tool_dest_pose.position.z, BLUE);
+
+        		dr.drawGuidingLines(imageCopy, r.tool_curr_pose, r.tool_dest_pose);
 
         		//-----------------------------------------------------------------------------------
-            	// publish camera to robot pose
-            	//-----------------------------------------------------------------------------------
-            	KDL::Frame cam_to_robot = br_frame * bc_frame.Inverse();
-            	tf::poseKDLToMsg(cam_to_robot, bc_pose_msg);
-            	pub_cam_to_robot_pose.publish(bc_pose_msg);
+        		// publish camera to robot pose
+        		//-----------------------------------------------------------------------------------
+        		KDL::Frame cam_to_robot = br_frame * bc_frame.Inverse();
+
+            	// convert pixel to meters
+            	cam_to_robot.p = cam_to_robot.p / dr.m_to_px;
+            	tf::poseKDLToMsg(cam_to_robot, cr_pose_msg);
+            	pub_cam_to_robot_pose.publish(cr_pose_msg);
 
             	///// TEMPORARY GETTING THE GEOMETRY OF THE AC IN ROBOT FRAME
 
-            	Point3d temp0 =  br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px + dr.br_trans);
-            	Point3d temp2 =  br_rotm * (dr.sq_points_in_board[2]/dr.m_to_px + dr.br_trans);
+//            	Point3d temp0 =  br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px + dr.br_trans);
+//            	Point3d temp2 =  br_rotm * (dr.sq_points_in_board[2]/dr.m_to_px + dr.br_trans);
 //
 //            	cout << "dr.br_trans  " << dr.br_trans << endl;
 //            	cout<<"0 " << br_rotm * (dr.sq_points_in_board[0]/dr.m_to_px) + dr.br_trans << endl;
@@ -214,7 +234,7 @@ int main(int argc, char *argv[]) {
         //-----------------------------------------------------------------------------------
         int baseLine = 0;
       	Point textOrigin(10,10);
-    	putText( imageCopy, msg, textOrigin, 1, 1, (status == 0) ?   RED:GREEN);
+    	putText( imageCopy, msg, textOrigin, 1, 1, (status == 0) ?   RED:GREEN1);
 
         imshow("teleop", imageCopy);
 
@@ -342,11 +362,18 @@ void rosObj::init(){
 	}
 	else n.getParam(node_name+"/cam_data_path", cam_data_path_param);
 
-	if(!ros::param::has(node_name+"/robot_topic_name")){
-		ROS_ERROR("Parameter robot_topic_name is required.");
+	if(!ros::param::has(node_name+"/tool_curr_topic_name")){
+		ROS_ERROR("Parameter tool_curr_topic_name is required.");
 		all_good = false;
 	}
-	else n.getParam(node_name+"/robot_topic_name", robot_topic_name_param);
+	else n.getParam(node_name+"/tool_curr_topic_name", tool_curr_topic_name_param);
+
+	if(!ros::param::has(node_name+"/tool_dest_topic_name")){
+		ROS_ERROR("Parameter tool_dest_topic_name is required.");
+		all_good = false;
+	}
+	else n.getParam(node_name+"/tool_dest_topic_name", tool_dest_topic_name_param);
+
 	if(!ros::param::has(node_name+"/board_to_robot_tr")){
 		ROS_INFO("Parameter board_to_robot_tr is not set. Calibration is required.");
 //		all_good = false;
@@ -365,20 +392,31 @@ void rosObj::init(){
 
 
 //-----------------------------------------------------------------------------------
-// robotPoseCallback
+// toolCurrCallback
 //-----------------------------------------------------------------------------------
 
-void rosObj::robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg)
+void rosObj::toolCurrCallback(const geometry_msgs::Pose::ConstPtr& msg)
 {
 	//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
-	robotPose.position = msg->position;
-	robotPose.orientation = msg->orientation;
+	tool_curr_pose.position = msg->position;
+	tool_curr_pose.orientation = msg->orientation;
 //		ros::Duration d(0.01);
 //		d.sleep();
 }
 
 
 
+//-----------------------------------------------------------------------------------
+// toolDestCallback
+//-----------------------------------------------------------------------------------
+void rosObj::toolDestCallback(const geometry_msgs::Pose::ConstPtr& msg)
+{
+	//    ROS_INFO_STREAM("chatter1: [" << msg->position << "] [thread=" << boost::this_thread::get_id() << "]");
+	tool_dest_pose.position = msg->position;
+	tool_dest_pose.orientation = msg->orientation;
+//		ros::Duration d(0.01);
+//		d.sleep();
+}
 
 
 //-----------------------------------------------------------------------------------
@@ -557,6 +595,12 @@ void calibBoardRobot::make_tr(vector< Point3d > axisPoints, Matx33d & _rotm, Vec
 	cv::normalize(z,z);
 	x =  y.cross(z);
 	y =  z.cross(x);
+	z =  x.cross(y);
+	// just to be sure!
+	cv::normalize(x,x);
+	cv::normalize(y,y);
+	cv::normalize(z,z);
+
 	Matx33d br_rotm = Matx33d::ones();
 
 	_rotm(0,0) = x[0]; _rotm(0,1) = y[0]; _rotm(0,2) = z[0];
@@ -646,36 +690,60 @@ void drawings::drawSquare(InputOutputArray _image) {
 
 }
 
-void drawings::draw3dCurve(InputOutputArray _image) {
 
-    CV_Assert(_image.getMat().total() != 0 &&
-              (_image.getMat().channels() == 1 || _image.getMat().channels() == 3));
 
-    unsigned int n_points = 500;
+
+void drawings::createCircle(double _center_x, double _center_y, double a, double b, unsigned int n_points) {
+
+	while(ac_points_in_board.size()>0){
+		ac_points_in_board.pop_back();
+	}
+
+    for(unsigned int i=0; i<n_points ; i++){
+    	double t = double(i)/double(n_points)*M_PI*2;
+    	ac_points_in_board.push_back(Point3f(_center_x+ a*sin(t), _center_y+ b*cos(t), 0 ));
+        ac_points_in_robot.push_back(br_rotm * (ac_points_in_board[i]/m_to_px) + br_trans);
+    }
+
+
+}
+
+
+
+
+void drawings::create3dCurve(double center_x, double center_y, unsigned int n_points) {
+
     double dx = 100;
     double dy = 100;
     double dz = 50;
 
+	while(ac_points_in_board.size()>0){
+		ac_points_in_board.pop_back();
+	}
+
     for(unsigned int i=0; i<n_points ; i++){
     	double t = double(i)/double(n_points)*M_PI*2;
-    	curve_points_in_board.push_back(Point3f(500+dx*sin(t), 300+dy*cos(t), dz*sin(2*t) ));
-
+    	ac_points_in_board.push_back(Point3f(center_x+dx*sin(t), center_y +dy*cos(t), dz*sin(2*t) ));
+        ac_points_in_robot.push_back(br_rotm * (ac_points_in_board[i]/m_to_px + br_trans));
     }
+}
+
+
+void drawings::drawACPoints(InputOutputArray _image) {
 
     // project  points
     vector< Point2d > imagePoints;
-    projectPoints(curve_points_in_board, bc_rvec, bc_tvec, camMatrix, distCoeffs, imagePoints);
+    projectPoints(ac_points_in_board, bc_rvec, bc_tvec, camMatrix, distCoeffs, imagePoints);
 
     // draw points
-    for(unsigned int i=0; i<n_points ; i++){
+    for(unsigned int i=0; i < imagePoints.size() ; i++){
     	circle( _image, imagePoints[i], 1, ORANGE, -1);
     }
 }
 
 
 
-
-void drawings::drawToolTip(InputOutputArray _image, double _x, double _y, double _z){
+void drawings::drawToolTip(InputOutputArray _image, double _x, double _y, double _z, const Scalar _color){
 
 //	Point3d br_trans = Point3d( br_frame.p[0],  br_frame.p[1],  br_frame.p[2]);
 	Point3d toolPoint3d_rrf = Point3d(_x, _y, _z);
@@ -689,12 +757,83 @@ void drawings::drawToolTip(InputOutputArray _image, double _x, double _y, double
 	toolPoint3d_vec_crf.push_back(toolPoint3d_crf);
 
 	projectPoints(toolPoint3d_vec_crf, bc_rvec, bc_tvec, camMatrix, distCoeffs, toolPoint2d);
-	circle( _image, toolPoint2d[0], 3, ORANGE, 2);
+	circle( _image, toolPoint2d[0], 2, _color, -1);
 
 }
 
 
 
+void drawings::drawGuidingLines(InputOutputArray _image, const geometry_msgs::Pose & tool, const geometry_msgs::Pose & desired){
+
+
+	//	Point3d br_trans = Point3d( br_frame.p[0],  br_frame.p[1],  br_frame.p[2]);
+	Point3d toolPoint3d_rrf = Point3d(tool.position.x, tool.position.y, tool.position.z);
+	Point3d desPoint3d_rrf = Point3d(desired.position.x,desired.position.y, desired.position.z);
+
+	// taking the robot tool tip from the robot ref frame to board ref frame and convert to pixles from meters
+	Point3d temp = br_rotm.t() * ( toolPoint3d_rrf - br_trans);
+	Point3d toolPoint3d_crf = Point3d(temp.x* m_to_px, temp.y* m_to_px, temp.z* m_to_px) ;
+
+	temp = br_rotm.t() * ( desPoint3d_rrf - br_trans);
+	Point3d desPoint3d_crf = Point3d(temp.x* m_to_px, temp.y* m_to_px, temp.z* m_to_px) ;
+
+	// projecting the tool on the board by setting the z = 0
+	Point3d projectedToolPoint3d_crf = toolPoint3d_crf;
+	projectedToolPoint3d_crf.z = 0.0;
+
+	vector<Point3d> point3d_vec_crf;
+	vector<Point2d> point2d_vec;
+	point3d_vec_crf.push_back(toolPoint3d_crf);
+	point3d_vec_crf.push_back(desPoint3d_crf);
+	point3d_vec_crf.push_back(projectedToolPoint3d_crf);
+
+	projectPoints(point3d_vec_crf, bc_rvec, bc_tvec, camMatrix, distCoeffs, point2d_vec);
+
+
+	line(_image, point2d_vec[0], point2d_vec[2], GREEN1, 1);
+	line(_image, point2d_vec[1], point2d_vec[2], GREEN2, 1);
+
+}
+//--------------------------------------------------------------------------------------------
+// Get cloud points of the ac
+//--------------------------------------------------------------------------------------------
+void drawings::getACCloud(sensor_msgs::PointCloud2 & cloud_out) {
+	// ... do data processing
+
+	int n_points = ac_points_in_robot.size();
+
+	// Fill some internals of the PoinCloud2 like the header/width/height ...
+	cloud_out.height = 1;
+	cloud_out.width = 3;
+	// Set the point fields to xyzrgb and resize the vector with the following command
+	// 4 is for the number of added fields. Each come in triplet: the name of the PointField,
+	// the number of occurences of the type in the PointField, the type of the PointField
+	sensor_msgs::PointCloud2Modifier modifier(cloud_out);
+	modifier.setPointCloud2Fields(3, "x", 1, sensor_msgs::PointField::FLOAT32,
+			"y", 1, sensor_msgs::PointField::FLOAT32,
+			"z", 1, sensor_msgs::PointField::FLOAT32);
+	// For convenience and the xyz, rgb, rgba fields, you can also use the following overloaded function.
+	// You have to be aware that the following function does add extra padding for backward compatibility though
+	// so it is definitely the solution of choice for PointXYZ and PointXYZRGB
+	// 2 is for the number of fields to add
+	modifier.setPointCloud2FieldsByString(1, "xyz");
+	// You can then reserve / resize as usual
+	modifier.resize(n_points);
+
+	// Define the iterators. When doing so, you define the Field you would like to iterate upon and
+	// the type of you would like returned: it is not necessary the type of the PointField as sometimes
+	// you pack data in another type (e.g. 3 uchar + 1 uchar for RGB are packed in a float)
+	sensor_msgs::PointCloud2Iterator<float> iter_x(cloud_out, "x");
+	sensor_msgs::PointCloud2Iterator<float> iter_y(cloud_out, "y");
+	sensor_msgs::PointCloud2Iterator<float> iter_z(cloud_out, "z");
+
+	// Fill the PointCloud2
+	for(size_t i=0; i<n_points; ++i, ++iter_x, ++iter_y, ++iter_z) {
+		*iter_x = ac_points_in_robot[i].x;
+		*iter_y = ac_points_in_robot[i].y;
+		*iter_z = ac_points_in_robot[i].z;
+	}
+}
 //--------------------------------------------------------------------------------------------
 //  CONVERSIONS
 //--------------------------------------------------------------------------------------------

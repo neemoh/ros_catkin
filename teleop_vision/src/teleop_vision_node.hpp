@@ -19,12 +19,15 @@
 #include "kdl/frames.hpp"
 #include "geometry_msgs/Pose.h"
 #include <tf_conversions/tf_kdl.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 
-//#include <pcl-1.7/pcl/point_cloud.h>
-//#include <pcl-1.7/pcl/point_types.h>
 
 using namespace std;
 using namespace cv;
+
+
 
 
 //-----------------------------------------------------------------------------------
@@ -89,18 +92,22 @@ public:
 
 	rosObj(int argc, char *argv[], string n_name);
 	void init();
-	void robotPoseCallback(const geometry_msgs::Pose::ConstPtr& msg);
+	void toolCurrCallback(const geometry_msgs::Pose::ConstPtr& msg);
+	void toolDestCallback(const geometry_msgs::Pose::ConstPtr& msg);
 
 public:
 	bool all_good;
 	std::string cam_data_path_param;
-	std::string robot_topic_name_param;
+	std::string tool_curr_topic_name_param;
+	std::string tool_dest_topic_name_param;
 	std::string node_name;
 	ros::NodeHandle n;
 	double freq_ros;
 	int camId_param;
 //	ros::Subscriber sub_robot;
-	geometry_msgs::Pose robotPose;
+	geometry_msgs::Pose tool_curr_pose;
+	geometry_msgs::Pose tool_dest_pose;
+	sensor_msgs::PointCloud2 ac_point_cloud;
 	vector<double> board_to_robot_tr_param;
 	int markersX_param;
 	int markersY_param;
@@ -169,13 +176,20 @@ public:
 
 
 	// drawing a simple rectangle
-	void drawSquare(InputOutputArray _image);
-	void drawToolTip(InputOutputArray _image, double _x, double _y, double _z);
+	void create3dCurve(double _center_x, double _center_y, unsigned int n_points);
+	void createCircle(double _center_x, double _center_y, double a, double b, unsigned int n_points);
 
-	void draw3dCurve(InputOutputArray _image);
+	void drawSquare(InputOutputArray _image);
+	void drawToolTip(InputOutputArray _image, double _x, double _y, double _z, const Scalar _color);
+
+	void drawGuidingLines(InputOutputArray _image, const geometry_msgs::Pose & tool, const geometry_msgs::Pose & desired);
+
+	void drawACPoints(InputOutputArray _image);
 	void update_cam_2_board_ref(Vec3d _bc_rvec,	Vec3d _bc_tvec){
 		bc_rvec = _bc_rvec; bc_tvec = _bc_tvec;
 	}
+
+	void getACCloud(sensor_msgs::PointCloud2 & cloud_out);
 
 public:
 
@@ -194,7 +208,8 @@ public:
 	Point3d sq_center;
 	Point2d sq_dims;
     vector< Point3d > sq_points_in_board;
-    vector< Point3d > curve_points_in_board;
+    vector< Point3d > ac_points_in_board;
+    vector< Point3d > ac_points_in_robot;
 
 };
 

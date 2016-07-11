@@ -130,7 +130,7 @@ include_directories(
 # add_dependencies(teleop_vision ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(teleop_vision_node src/board_ac.cpp)
+add_executable(teleop_vision_node src/teleop_vision_node.cpp)
 add_executable(autoPalp src/autoPalp.cpp)
 
 ## Add cmake target dependencies of the executable
