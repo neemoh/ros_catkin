@@ -267,6 +267,7 @@ int main(int argc, char *argv[]) {
         //-----------------------------------------------------------------------------------
         // during the task execution
         //-----------------------------------------------------------------------------------
+
         if(r.acquisition_event.data == 's'){
         	dr.setTransientNotification("Acquiring task data",50,50, 100);
 
@@ -282,13 +283,17 @@ int main(int argc, char *argv[]) {
         else if(r.acquisition_event.data == 'e'){
 
         	// task ended
-        	r.acquisition_event.data ='o';
+        	r.acquisition_event.data = ' ';
         	dr.new_task = true;
         	dr.setTransientNotification("Acquisition ended",50,50, 50);
         }
 
     	dr.drawUsersPath(imageCopy);
     	dr.showTransientNotification(imageCopy);
+
+    	if(r.msg_ws_alert)
+    		dr.showWorkspaceAlert(imageCopy);
+
         //-----------------------------------------------------------------------------------
         // Output Text
         //-----------------------------------------------------------------------------------
@@ -402,6 +407,8 @@ rosObj::rosObj(int argc, char *argv[], string n_name){
 	all_good = false;
 	camId_param = 0;
 	node_name = n_name;
+	new_event = false;
+	msg_ws_alert = false;
 }
 
 
@@ -486,8 +493,14 @@ void rosObj::toolDestCallback(const geometry_msgs::Pose::ConstPtr& msg){
 // eventsCallback
 //-----------------------------------------------------------------------------------
 void rosObj::eventsCallback(const std_msgs::Char::ConstPtr& msg){
-	acquisition_event = *msg;
+	this->new_event = true;
+	this->acquisition_event = *msg;
 	cout << "received event: " << msg->data << endl;
+
+	if(this->acquisition_event.data == 'w')
+		this->msg_ws_alert = true;
+	else if(this->acquisition_event.data == 'q')
+		this->msg_ws_alert = false;
 }
 
 
@@ -1066,6 +1079,43 @@ void drawings::showTransientNotification(InputOutputArray _image){
 		notification_counter--;
 	}
 }
+
+
+//--------------------------------------------------------------------------------------------
+// showTransientNotification
+//--------------------------------------------------------------------------------------------
+void drawings::showWorkspaceAlert(InputOutputArray _image){
+
+//	string msg = "WS limit: Release the Clutch";
+//	putText( _image, msg, Point(150, 60), FONT_HERSHEY_SIMPLEX, 1.0, RED, 2);
+
+	string text = "WS limit: Release the Clutch";
+	int fontFace = FONT_HERSHEY_SIMPLEX;
+	double fontScale = 0.8;
+	int thickness = 1;
+
+	int baseline=0;
+	Size textSize = getTextSize(text, fontFace,
+	                            fontScale, thickness, &baseline);
+
+	// center the text
+
+	Point textOrg(( _image.cols() - textSize.width)/2,
+	              ( 	70 + textSize.height)/2);
+
+	// draw the box
+	rectangle(_image,
+			textOrg + Point(-15, baseline),
+			textOrg + Point(textSize.width+15, -textSize.height-10),
+	        RED,-1);
+
+
+	// then put the text itself
+	putText(_image, text, textOrg, fontFace, fontScale,
+	        Scalar::all(255), thickness, 8);
+
+}
+
 
 
 

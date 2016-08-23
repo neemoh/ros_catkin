@@ -99,6 +99,9 @@ public:
 	void eventsCallback(const std_msgs::Char::ConstPtr& msg);
 public:
 	bool all_good;
+	bool new_event;
+	bool msg_ws_alert;
+
 	std::string cam_data_path_param;
 	std::string tool_curr_topic_name_param;
 	std::string tool_dest_topic_name_param;
@@ -225,6 +228,9 @@ public:
 
 	// show the transient notification
 	void showTransientNotification(InputOutputArray _image);
+
+	// alert the user about the worksapce limit with a message
+	void showWorkspaceAlert(InputOutputArray _image);
 
 	bool isToolInTouch(double _depth);
 public:
