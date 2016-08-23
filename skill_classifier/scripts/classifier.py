@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import rospy
-from geometry_msgs.msg import Pose, Twist
+from geometry_msgs.msg import PoseStamped, Twist
 import numpy as np
 import pickle
 from sklearn.linear_model import LogisticRegression
@@ -17,15 +17,21 @@ from os import getcwd
 np.set_printoptions(precision=4)
 np.set_printoptions(suppress=True)
 
-metrics = Pose()
+metrics = PoseStamped()
 new_metrics_msg = False
 
 
 def poseMsgToNp(pose):
+    # out of laziness put the path length in the time stamp! :D
+    # The length is used to scale the last three metrics
+    path_length = pose.header.stamp.to_sec()
+    print path_length
+    # first three metrics are converted from m to mm
     return np.array([
-    pose.position.x,    pose.position.y,    pose.position.z,
-    pose.orientation.x,    pose.orientation.y,
-    pose.orientation.z,    pose.orientation.w
+    pose.pose.position.x*1000,  pose.pose.position.y*1000,
+    pose.pose.position.z*1000,
+    pose.pose.orientation.x,    pose.pose.orientation.y,
+    pose.pose.orientation.z,    pose.pose.orientation.w
     ]).reshape(1,7)
 
 def npToTwistMsg(nparray):
@@ -82,7 +88,7 @@ def rosGO():
 
     rospy.init_node('skillClassifier')
     #directory = rospy.get_param("~classifiers_file_dir")
-    rospy.Subscriber('metrics', Pose, callback)
+    rospy.Subscriber('metricsAll', PoseStamped, callback)
 
     pub = rospy.Publisher('user_profile', Twist, queue_size=10)
     #rospy.loginfo("Publishing static odometry from \"%s\" to \"%s\"", "2", "3")
@@ -92,13 +98,19 @@ def rosGO():
         if(new_metrics_msg):
 
             new_metrics_msg = False
-            # do the classification
-            profile = cl.classify(poseMsgToNp(metrics))
-            # Log the input and outputs
-            rospy.loginfo("received sample  : %s" % poseMsgToNp(metrics).ravel())
-            rospy.loginfo("estimated profile: %s\n" % profile)
-            # Publish the profile
-            pub.publish( npToTwistMsg(profile) )
+            metrics_arr = poseMsgToNp(metrics)
+
+            # Chech if the message contains NaNs by counting the number of Nans
+            if(len([x for x in np.isnan(metrics_arr).ravel() if x]) > 0):
+                print "ERROR the metrics message has a NaN element"
+            else:
+                # do the classification
+                profile = cl.classify(metrics_arr)
+                # Log the input and outputs
+                rospy.loginfo("received sample  : %s" % metrics_arr.ravel())
+                rospy.loginfo("estimated profile: %s\n" % profile)
+                # Publish the profile
+                pub.publish( npToTwistMsg(profile) )
 
         r.sleep()
 
