@@ -23,7 +23,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
-
+#include <teleop_vision/skillProbabilities.h>
 
 using namespace std;
 using namespace cv;
@@ -101,6 +101,7 @@ public:
 	bool all_good;
 	bool new_event;
 	bool msg_ws_alert;
+	bool acqusition_running;
 
 	std::string cam_data_path_param;
 	std::string tool_curr_topic_name_param;

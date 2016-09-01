@@ -268,8 +268,8 @@ int main(int argc, char *argv[]) {
         // during the task execution
         //-----------------------------------------------------------------------------------
 
-        if(r.acquisition_event.data == 's'){
-        	dr.setTransientNotification("Acquiring task data",50,50, 100);
+        if(r.acqusition_running){
+        	dr.setTransientNotification("Acquiring task data",50, 60, 2);
 
         	// task started.
         	if(dr.new_task){
@@ -280,12 +280,10 @@ int main(int argc, char *argv[]) {
         	//Record the path
         	dr.recordUsersPath(dr.isToolInTouch(-0.001));
         }
-        else if(r.acquisition_event.data == 'e'){
-
+        else{
         	// task ended
-        	r.acquisition_event.data = ' ';
         	dr.new_task = true;
-        	dr.setTransientNotification("Acquisition ended",50,50, 50);
+
         }
 
     	dr.drawUsersPath(imageCopy);
@@ -409,6 +407,7 @@ rosObj::rosObj(int argc, char *argv[], string n_name){
 	node_name = n_name;
 	new_event = false;
 	msg_ws_alert = false;
+	acqusition_running = false;
 }
 
 
@@ -497,10 +496,33 @@ void rosObj::eventsCallback(const std_msgs::Char::ConstPtr& msg){
 	this->acquisition_event = *msg;
 	cout << "received event: " << msg->data << endl;
 
-	if(this->acquisition_event.data == 'w')
+
+	switch(this->acquisition_event.data){
+
+	case 'w':
 		this->msg_ws_alert = true;
-	else if(this->acquisition_event.data == 'q')
+		break;
+
+	case 'q':
 		this->msg_ws_alert = false;
+		break;
+
+	case 's':
+		this->acqusition_running = true;
+		break;
+
+	case 'e':
+		this->acqusition_running = false;
+	break;
+
+	case 'd':
+		this->acqusition_running = false;
+		break;
+
+	default:
+		// do nothing
+		break;
+	}
 }
 
 
@@ -1012,8 +1034,9 @@ void drawings::recordUsersPath(bool _is_tool_in_touch){
 			penet = 0.0;
 		else if(penet > dis_max)
 			penet = dis_max;
-		std::cout << "penet: " << penet << std::endl;
-
+//		std::cout << "penet: " << penet << std::endl;
+//		std::cout << "color: " << 		Scalar( (1-penet/dis_max)*255, 20, (penet/dis_max)*255 )
+// << std::endl;
 		users_path_colors.push_back(Scalar( (1-penet/dis_max)*255, 20, (penet/dis_max)*255 ));
 	}
 
@@ -1089,7 +1112,7 @@ void drawings::showWorkspaceAlert(InputOutputArray _image){
 //	string msg = "WS limit: Release the Clutch";
 //	putText( _image, msg, Point(150, 60), FONT_HERSHEY_SIMPLEX, 1.0, RED, 2);
 
-	string text = "WS limit: Release the Clutch";
+	string text = "Reaching WS limit!";
 	int fontFace = FONT_HERSHEY_SIMPLEX;
 	double fontScale = 0.8;
 	int thickness = 1;
